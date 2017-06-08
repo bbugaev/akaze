@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
   if (use_ransac == false)
     compute_inliers_homography(matches, inliers, HG, MIN_H_ERROR);
   else
-    compute_inliers_ransac(matches, inliers, MIN_H_ERROR, false);
+    compute_inliers_ransac(matches, inliers, MIN_H_ERROR, true);
 
   // Compute the inliers statistics
   nkpts1 = kpts1.size();

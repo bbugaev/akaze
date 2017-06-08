@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
   if (use_ransac == false)
     compute_inliers_homography(matches_orb,inliers_orb, HG, MIN_H_ERROR);
   else
-    compute_inliers_ransac(matches_orb, inliers_orb, MIN_H_ERROR, false);
+    compute_inliers_ransac(matches_orb, inliers_orb, MIN_H_ERROR, true);
 
   nkpts1_orb = kpts1_orb.size();
   nkpts2_orb = kpts2_orb.size();
@@ -227,7 +227,7 @@ int main(int argc, char *argv[]) {
   if (use_ransac == false)
     compute_inliers_homography(matches_brisk, inliers_brisk, HG, MIN_H_ERROR);
   else
-    compute_inliers_ransac(matches_brisk, inliers_brisk, MIN_H_ERROR, false);
+    compute_inliers_ransac(matches_brisk, inliers_brisk, MIN_H_ERROR, true);
 
   nkpts1_brisk = kpts1_brisk.size();
   nkpts2_brisk= kpts2_brisk.size();
@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
   if (use_ransac == false)
     compute_inliers_homography(matches_akaze,inliers_akaze,HG,MIN_H_ERROR);
   else
-    compute_inliers_ransac(matches_akaze,inliers_akaze,MIN_H_ERROR,false);
+    compute_inliers_ransac(matches_akaze,inliers_akaze,MIN_H_ERROR,true);
 
   t2 = cv::getTickCount();
   takaze = 1000.0*(t2-t1)/cv::getTickFrequency();
