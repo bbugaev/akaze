@@ -1,6 +1,20 @@
-
 # Find external libraries and dependencies
-find_package(OpenCV REQUIRED)
+
+if(DEFINED OpenCV_INCLUDES_DIR AND DEFINED OpenCV_LIBS_DIR)
+  include_directories("${OpenCV_INCLUDES_DIR}")
+  link_directories("${OpenCV_LIBS_DIR}")
+  set(OpenCV_LIBS
+      "opencv_core"
+      "opencv_calib3d"
+      "opencv_features2d"
+      "opencv_imgproc"
+      "opencv_flann"
+      "opencv_highgui")
+  set(OpenCV_LIBS ${OpenCV_LIBS} ${OpenCV_LIBS})
+else(DEFINED OpenCV_INCLUDES_DIR AND DEFINED OpenCV_LIBS_DIR)
+    find_package(OpenCV REQUIRED)
+endif(DEFINED OpenCV_INCLUDES_DIR AND DEFINED OpenCV_LIBS_DIR)
+
 find_package(Doxygen)
 
 if (NOT APPLE)
