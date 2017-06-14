@@ -21,7 +21,6 @@
  */
 
 #include "AKAZE.h"
-#include <opencv2/highgui/highgui.hpp>
 
 using namespace std;
 using namespace libAKAZE;
@@ -1353,40 +1352,6 @@ void AKAZE::Get_Upright_MLDB_Descriptor_Subset(const cv::KeyPoint& kpt, unsigned
   for (int i=0; i<descriptorBits_.rows; i++) {
     if (vals[comps[2*i]] > vals[comps[2*i +1]]) {
       desc[i/8] |= (1<<(i%8));
-    }
-  }
-}
-
-/* ************************************************************************* */
-void AKAZE::Save_Scale_Space() {
-
-  cv::Mat img_aux;
-  string outputFile;
-
-  for (size_t i = 0; i < evolution_.size(); i++) {
-    convert_scale(evolution_[i].Lt);
-    evolution_[i].Lt.convertTo(img_aux,CV_8U,255.0,0);
-    outputFile = "../output/evolution_" + to_formatted_string(i, 2) + ".jpg";
-    cv::imwrite(outputFile, img_aux);
-  }
-}
-
-/* ************************************************************************* */
-void AKAZE::Save_Detector_Responses() {
-
-  cv::Mat img_aux;
-  string outputFile;
-  float ttime = 0.0;
-  int nimgs = 0;
-
-  for (size_t i = 0; i < evolution_.size(); i++) {
-    ttime = evolution_[i+1].etime-evolution_[i].etime;
-    if (ttime > 0) {
-      convert_scale(evolution_[i].Ldet);
-      evolution_[i].Ldet.convertTo(img_aux,CV_8U,255.0,0);
-      outputFile = "../output/images/detector_" + to_formatted_string(nimgs, 2) + ".jpg";
-      imwrite(outputFile.c_str(), img_aux);
-      nimgs++;
     }
   }
 }

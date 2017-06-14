@@ -153,12 +153,6 @@ namespace libAKAZE {
     /// Do the binary comparisons to obtain the descriptor
     void MLDB_Binary_Comparisons(float* values, unsigned char* desc, int count, int& dpos) const;
 
-    /// This method saves the scale space into jpg images
-    void Save_Scale_Space();
-
-    /// This method saves the feature detector responses of the nonlinear scale space into jpg images
-    void Save_Detector_Responses();
-
     /// Display timing information
     void Show_Computation_Times() const;
 
