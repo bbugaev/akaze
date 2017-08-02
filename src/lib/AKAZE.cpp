@@ -243,9 +243,6 @@ void AKAZE::Compute_Determinant_Hessian_Response() {
 
 namespace
 {
-  int const MAX_FEATURE_COUNT_PER_PYRAMID = 50000;
-
-
   bool compareByResponse(cv::KeyPoint const &first, cv::KeyPoint const &second)
   {
     return first.response > second.response;
@@ -290,18 +287,11 @@ namespace
     circle(nms, cv::Point(round<int>(x), round<int>(y)),
            r, cv::Scalar::all(255), -1);
   }
-
-
-  int calcMinDist(int const height, int const width)
-  {
-    // minDist = 6 for fullhd and 12 for 4k
-    return static_cast<int>(floor(sqrt(static_cast<double>(height * width)
-                            / MAX_FEATURE_COUNT_PER_PYRAMID)));
-    }
 }
 
+
 /* ************************************************************************* */
-void AKAZE::Find_Scale_Space_Extrema(std::vector<cv::KeyPoint>& kpts) {
+void AKAZE::Find_Scale_Space_Extrema(vector<cv::KeyPoint>& resKpts) {
     // Set maximum size
     float smax = 0.0;
     if (options_.descriptor == SURF_UPRIGHT || options_.descriptor == SURF ||
@@ -314,9 +304,9 @@ void AKAZE::Find_Scale_Space_Extrema(std::vector<cv::KeyPoint>& kpts) {
 
     double t1 = cv::getTickCount();
 
-    std::vector< std::vector<cv::KeyPoint> > kptsList(evolution_.size());
+    vector< vector<cv::KeyPoint> > kptsList(evolution_.size());
     for (size_t i = 0; i < evolution_.size(); i++) {
-        std::vector<cv::KeyPoint> &curKpts = kptsList[i];
+        vector<cv::KeyPoint> &curKpts = kptsList[i];
 
         for (int ix = 1; ix < evolution_[i].Ldet.rows-1; ix++) {
 
@@ -395,7 +385,7 @@ void AKAZE::Find_Scale_Space_Extrema(std::vector<cv::KeyPoint>& kpts) {
                 if (!checkNms(prevLvlNms, curY, curX) && !checkNms(prevLvlNms, kpt.pt.y, kpt.pt.x)) {
                     continue;
                 }
-                kpts.push_back(kpt);
+                resKpts.push_back(kpt);
             }
             putPoint(curLvlNms, kpt.pt.y, kpt.pt.x, curClassR);
             if (lIdx > 0) {
@@ -406,9 +396,7 @@ void AKAZE::Find_Scale_Space_Extrema(std::vector<cv::KeyPoint>& kpts) {
         std::swap(nextKpts, prevKpts);
         prevClassR = curClassR;
     }
-    kpts.insert(kpts.end(), prevKpts.begin(), prevKpts.end());
-
-    // TODO add global nms
+    resKpts.insert(resKpts.end(), prevKpts.begin(), prevKpts.end());
 
     double t2 = cv::getTickCount();
     timing_.extrema = 1000.0*(t2-t1) / cv::getTickFrequency();
