@@ -21,6 +21,7 @@
  */
 
 #include "AKAZE.h"
+#include <iterator>
 
 using namespace std;
 using namespace libAKAZE;
@@ -184,6 +185,7 @@ void AKAZE::Feature_Detection(std::vector<cv::KeyPoint>& kpts) {
   timing_.detector = 1000.0*(t2-t1) / cv::getTickFrequency();
 }
 
+
 /* ************************************************************************* */
 void AKAZE::Compute_Multiscale_Derivatives() {
 
@@ -238,143 +240,180 @@ void AKAZE::Compute_Determinant_Hessian_Response() {
   }
 }
 
+
+namespace
+{
+  int const MAX_FEATURE_COUNT_PER_PYRAMID = 50000;
+
+
+  bool compareByResponse(cv::KeyPoint const &first, cv::KeyPoint const &second)
+  {
+    return first.response > second.response;
+  }
+
+
+  bool compareByClassId(cv::KeyPoint const &first, cv::KeyPoint const &second)
+  {
+    return first.class_id < second.class_id;
+  }
+
+
+  template<class Result, class Arg>
+  Result round(Arg const &x)
+  {
+    return static_cast<Result>(std::floor(x + static_cast<Arg>(0.5)));
+  }
+
+  template <class T>
+  T at(cv::Mat const &mat, float y, float x)
+  {
+    int const i = std::max(0, std::min(mat.rows - 1, round<int>(y)));
+    int const j = std::max(0, std::min(mat.cols - 1, round<int>(x)));
+    return mat.at<T>(i, j);
+  }
+
+  bool checkIndices(cv::Mat const &mat, float y, float x)
+  {
+    return y >= 0 && x >= 0 && y <= mat.rows - 1 && x <= mat.cols - 1;
+  }
+
+
+  bool checkNms(cv::Mat const &nms, float y, float x)
+  {
+    if (!checkIndices(nms, y, x)) return false;
+    return at<uchar>(nms, y, x) == 0;
+  }
+
+
+  void putPoint(cv::Mat &nms, float y, float x, int r)
+  {
+    circle(nms, cv::Point(round<int>(x), round<int>(y)),
+           r, cv::Scalar::all(255), -1);
+  }
+
+
+  int calcMinDist(int const height, int const width)
+  {
+    // minDist = 6 for fullhd and 12 for 4k
+    return static_cast<int>(floor(sqrt(static_cast<double>(height * width)
+                            / MAX_FEATURE_COUNT_PER_PYRAMID)));
+    }
+}
+
 /* ************************************************************************* */
 void AKAZE::Find_Scale_Space_Extrema(std::vector<cv::KeyPoint>& kpts) {
-
-  double t1 = 0.0, t2 = 0.0;
-  float value = 0.0;
-  float dist = 0.0, ratio = 0.0, smax = 0.0;
-  int npoints = 0, id_repeated = 0;
-  int sigma_size_ = 0, left_x = 0, right_x = 0, up_y = 0, down_y = 0;
-  bool is_extremum = false, is_repeated = false, is_out = false;
-  cv::KeyPoint point;
-  vector<cv::KeyPoint> kpts_aux;
-
-  // Set maximum size
-  if (options_.descriptor == SURF_UPRIGHT || options_.descriptor == SURF ||
-      options_.descriptor == MLDB_UPRIGHT || options_.descriptor == MLDB) {
-    smax = 10.0*sqrtf(2.0f);
-  }
-  else if (options_.descriptor == MSURF_UPRIGHT || options_.descriptor == MSURF) {
-    smax = 12.0*sqrtf(2.0f);
-  }
-
-  t1 = cv::getTickCount();
-
-  for (size_t i = 0; i < evolution_.size(); i++) {
-    for (int ix = 1; ix < evolution_[i].Ldet.rows-1; ix++) {
-
-      float* ldet_m = evolution_[i].Ldet.ptr<float>(ix-1);
-      float* ldet = evolution_[i].Ldet.ptr<float>(ix);
-      float* ldet_p = evolution_[i].Ldet.ptr<float>(ix+1);
-
-      for (int jx = 1; jx < evolution_[i].Ldet.cols-1; jx++) {
-
-        is_extremum = false;
-        is_repeated = false;
-        is_out = false;
-        value = ldet[jx];
-
-        // Filter the points with the detector threshold
-        if (value > options_.dthreshold && value >= options_.min_dthreshold &&
-            value > ldet[jx-1] && value > ldet[jx+1] &&
-            value > ldet_m[jx-1] && value > ldet_m[jx] && value > ldet_m[jx+1] &&
-            value > ldet_p[jx-1] && value > ldet_p[jx] && value > ldet_p[jx+1]) {
-
-          is_extremum = true;
-          point.response = fabs(value);
-          point.size = evolution_[i].esigma*options_.derivative_factor;
-          point.octave = evolution_[i].octave;
-          point.class_id = i;
-          ratio = pow(2.0f, point.octave);
-          sigma_size_ = fRound(point.size/ratio);
-          point.pt.x = jx;
-          point.pt.y = ix;
-
-          // Compare response with the same and lower scale
-          for (size_t ik = 0; ik < kpts_aux.size(); ik++) {
-
-            if ((point.class_id-1) == kpts_aux[ik].class_id ||
-                point.class_id == kpts_aux[ik].class_id) {
-
-              dist = (point.pt.x*ratio-kpts_aux[ik].pt.x)*(point.pt.x*ratio-kpts_aux[ik].pt.x) +
-                     (point.pt.y*ratio-kpts_aux[ik].pt.y)*(point.pt.y*ratio-kpts_aux[ik].pt.y);
-
-              if (dist <= point.size*point.size) {
-                if (point.response > kpts_aux[ik].response) {
-                  id_repeated = ik;
-                  is_repeated = true;
-                }
-                else {
-                  is_extremum = false;
-                }
-                break;
-              }
-            }
-          }
-
-          // Check out of bounds
-          if (is_extremum == true) {
-
-            // Check that the point is under the image limits for the descriptor computation
-            left_x = fRound(point.pt.x-smax*sigma_size_)-1;
-            right_x = fRound(point.pt.x+smax*sigma_size_) +1;
-            up_y = fRound(point.pt.y-smax*sigma_size_)-1;
-            down_y = fRound(point.pt.y+smax*sigma_size_)+1;
-
-            if (left_x < 0 || right_x >= evolution_[i].Ldet.cols ||
-                up_y < 0 || down_y >= evolution_[i].Ldet.rows) {
-              is_out = true;
-            }
-
-            if (is_out == false) {
-              if (is_repeated == false) {
-                point.pt.x = point.pt.x*ratio + .5*(ratio-1.0);
-                point.pt.y = point.pt.y*ratio + .5*(ratio-1.0);
-                kpts_aux.push_back(point);
-                npoints++;
-              }
-              else {
-                point.pt.x = point.pt.x*ratio + .5*(ratio-1.0);
-                point.pt.y = point.pt.y*ratio + .5*(ratio-1.0);
-                kpts_aux[id_repeated] = point;
-              }
-            } // if is_out
-          } //if is_extremum
-        }
-      } // for jx
-    } // for ix
-  } // for i
-
-  // Now filter points with the upper scale level
-  for (size_t i = 0; i < kpts_aux.size(); i++) {
-
-    is_repeated = false;
-    const cv::KeyPoint& point = kpts_aux[i];
-    for (size_t j = i+1; j < kpts_aux.size(); j++) {
-
-      // Compare response with the upper scale
-      if ((point.class_id+1) == kpts_aux[j].class_id) {
-
-        dist = (point.pt.x-kpts_aux[j].pt.x)*(point.pt.x-kpts_aux[j].pt.x) +
-            (point.pt.y-kpts_aux[j].pt.y)*(point.pt.y-kpts_aux[j].pt.y);
-
-        if (dist <= point.size*point.size) {
-          if (point.response < kpts_aux[j].response) {
-            is_repeated = true;
-            break;
-          }
-        }
-      }
+    // Set maximum size
+    float smax = 0.0;
+    if (options_.descriptor == SURF_UPRIGHT || options_.descriptor == SURF ||
+        options_.descriptor == MLDB_UPRIGHT || options_.descriptor == MLDB) {
+            smax = 10.0*sqrtf(2.0f);
+    }
+    else if (options_.descriptor == MSURF_UPRIGHT || options_.descriptor == MSURF) {
+        smax = 12.0*sqrtf(2.0f);
     }
 
-    if (is_repeated == false)
-      kpts.push_back(point);
-  }
+    double t1 = cv::getTickCount();
 
-  t2 = cv::getTickCount();
-  timing_.extrema = 1000.0*(t2-t1) / cv::getTickFrequency();
+    std::vector< std::vector<cv::KeyPoint> > kptsList(evolution_.size());
+    for (size_t i = 0; i < evolution_.size(); i++) {
+        std::vector<cv::KeyPoint> &curKpts = kptsList[i];
+
+        for (int ix = 1; ix < evolution_[i].Ldet.rows-1; ix++) {
+
+            float* ldet_m = evolution_[i].Ldet.ptr<float>(ix-1);
+            float* ldet = evolution_[i].Ldet.ptr<float>(ix);
+            float* ldet_p = evolution_[i].Ldet.ptr<float>(ix+1);
+
+            for (int jx = 1; jx < evolution_[i].Ldet.cols-1; jx++) {
+                float value = ldet[jx];
+                // Filter the points with the detector threshold
+                if (value > options_.dthreshold && value >= options_.min_dthreshold &&
+                        value > ldet[jx-1] && value > ldet[jx+1] &&
+                        value > ldet_m[jx-1] && value > ldet_m[jx] && value > ldet_m[jx+1] &&
+                        value > ldet_p[jx-1] && value > ldet_p[jx] && value > ldet_p[jx+1]) {
+                    cv::KeyPoint kpt;
+                    kpt.response = fabs(value);
+                    kpt.size = evolution_[i].esigma*options_.derivative_factor;
+                    kpt.octave = evolution_[i].octave;
+                    kpt.class_id = i;
+                    float ratio = pow(2.0f, kpt.octave);
+                    int sigma_size_ = fRound(kpt.size/ratio);
+                    kpt.pt.x = jx;
+                    kpt.pt.y = ix;
+
+                    // Check out of bounds
+                    // Check that the point is under the image limits for the descriptor computation
+                    int left_x = fRound(kpt.pt.x-smax*sigma_size_)-1;
+                    int right_x = fRound(kpt.pt.x+smax*sigma_size_) +1;
+                    int up_y = fRound(kpt.pt.y-smax*sigma_size_)-1;
+                    int down_y = fRound(kpt.pt.y+smax*sigma_size_)+1;
+                    if (left_x < 0 || right_x >= evolution_[i].Ldet.cols ||
+                            up_y < 0 || down_y >= evolution_[i].Ldet.rows) {
+                        continue;
+                    }
+                    kpt.pt.x = kpt.pt.x*ratio + .5*(ratio-1.0);
+                    kpt.pt.y = kpt.pt.y*ratio + .5*(ratio-1.0);
+
+                    curKpts.push_back(kpt);
+                }
+            } // for jx
+        } // for ix
+    } // for i
+
+    vector<cv::KeyPoint> prevKpts;
+    int const nmsHeight = options_.img_height;
+    int const nmsWidth = options_.img_width;
+
+    int prevClassR = 0;
+    for (size_t lIdx = 0; lIdx < kptsList.size(); ++lIdx) {
+        vector<cv::KeyPoint> &curKpts(kptsList[lIdx]);
+        std::sort(curKpts.begin(), curKpts.end(), compareByResponse);
+
+        vector<cv::KeyPoint> mergedKpts;
+        mergedKpts.reserve(curKpts.size() + prevKpts.size());
+        merge(curKpts.begin(), curKpts.end(), prevKpts.begin(),
+                prevKpts.end(), back_inserter(mergedKpts), compareByResponse);
+
+        cv::Mat prevLvlNms(nmsHeight, nmsWidth, CV_8U, cv::Scalar(0));
+        cv::Mat curLvlNms(nmsHeight, nmsWidth, CV_8U, cv::Scalar(0));
+        int const curClassR = static_cast<int>(floor(evolution_[lIdx].esigma*options_.derivative_factor)) + 1;
+
+        vector<cv::KeyPoint> nextKpts;
+        for (size_t kptIdx = 0; kptIdx < mergedKpts.size(); ++kptIdx) {
+            cv::KeyPoint const &kpt(mergedKpts[kptIdx]);
+            int const kptClassId = kpt.class_id;
+            float ratio = pow(2.0f, kpt.octave);
+            float curX = kpt.pt.x - .5*(ratio-1.0);
+            float curY = kpt.pt.y - .5*(ratio-1.0);
+
+            if (static_cast<size_t>(kptClassId) == lIdx) {
+                if (!checkNms(curLvlNms, curY, curX)) {
+                    continue;
+                }
+                nextKpts.push_back(kpt);
+            } else {
+                if (!checkNms(prevLvlNms, curY, curX) && !checkNms(prevLvlNms, kpt.pt.y, kpt.pt.x)) {
+                    continue;
+                }
+                kpts.push_back(kpt);
+            }
+            putPoint(curLvlNms, kpt.pt.y, kpt.pt.x, curClassR);
+            if (lIdx > 0) {
+                putPoint(prevLvlNms, kpt.pt.y, kpt.pt.x, prevClassR);
+            }
+        }
+
+        std::swap(nextKpts, prevKpts);
+        prevClassR = curClassR;
+    }
+    kpts.insert(kpts.end(), prevKpts.begin(), prevKpts.end());
+
+    // TODO add global nms
+
+    double t2 = cv::getTickCount();
+    timing_.extrema = 1000.0*(t2-t1) / cv::getTickFrequency();
 }
+
 
 /* ************************************************************************* */
 void AKAZE::Do_Subpixel_Refinement(std::vector<cv::KeyPoint>& kpts) {
